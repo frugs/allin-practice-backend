@@ -1,10 +1,8 @@
 """This is the single sign-on app"""
 import json
-import os
 
 import flask
 import flask_oauthlib.client
-import requests
 import allinsso
 import firebase_admin
 import firebase_admin.db

@@ -3,5 +3,4 @@ Flask-OAuthlib
 google-cloud-datastore
 werkzeug
 allinsso
-requests
 firebase-admin

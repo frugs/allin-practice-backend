@@ -17,7 +17,6 @@ setuptools.setup(
         "flask",
         "google-cloud-datastore",
         "allinsso",
-        "requests",
         "firebase-admin",
     ],
 )
