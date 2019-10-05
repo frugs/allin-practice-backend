@@ -28,7 +28,7 @@ LEAGUE_NAMES = [
     "Platinum",
     "Diamond",
     "Master",
-    "Grandmaster"
+    "Grandmaster",
 ]
 RACE_DB_KEYS = {
     "Terran": "terran_player",
@@ -36,6 +36,16 @@ RACE_DB_KEYS = {
     "Zerg": "zerg_player",
     "Random": "random_player",
 }
+RACES = list(RACE_DB_KEYS.keys())
+DAYS_OF_THE_WEEK = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 
 app = flask.Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -54,34 +64,45 @@ def discord_auth_headers(access_token: str) -> dict:
     return {"Authorization": "Bearer " + access_token, "User-Agent": "Mozilla/5.0"}
 
 
+def refresh_discord_token_and_get_user_data():
+    access_token = allinsso.refresh_discord_token(discord, flask.session)
+
+    if not access_token:
+        return None
+
+    resp = discord.get(
+        "users/@me", headers=discord_auth_headers(access_token), token=access_token
+    )
+    if resp.status != 200 or not resp.data or "id" not in resp.data:
+        return None
+
+    discord_data = resp.data
+    if "id" not in discord_data:
+        return None
+
+    return discord_data
+
+
 def forbidden(description=""):
     flask.abort(403, description=description)
 
 
 @app.route("/member")
 def login():
-    access_token = allinsso.refresh_discord_token(discord, flask.session)
-
-    if not access_token:
+    discord_data = refresh_discord_token_and_get_user_data()
+    if not discord_data:
         return forbidden()
 
-    resp = discord.get(
-        "users/@me", headers=discord_auth_headers(access_token), token=access_token
-    )
-    if resp.status != 200 or not resp.data or "id" not in resp.data:
-        return forbidden()
-
-    discord_data = resp.data
     discord_id = discord_data["id"]
 
-    if "avatar" in resp.data:
+    if "avatar" in discord_data:
         discord_avatar = "https://cdn.discordapp.com/avatars/{}/{}".format(
             discord_id, discord_data["avatar"]
         )
     else:
         discord_avatar = ""
 
-    discord_username = resp.data.get("username", "")
+    discord_username = discord_data.get("username", "")
     if not discord_username:
         print("Failed to fetch discord username for user: " + discord_id)
 
@@ -101,9 +122,7 @@ def login():
             race for race, key in RACE_DB_KEYS.items() if member_data.get(key, False)
         ]
 
-        practice = {
-            "practiceRaces": races,
-        }
+        practice = {"practiceRaces": races}
 
     result = {
         "avatar": discord_avatar,
@@ -112,3 +131,42 @@ def login():
         "practice": practice,
     }
     return flask.jsonify(result)
+
+
+@app.route("/member-practice", methods=["POST"])
+def member_practice():
+    if not flask.request.is_json:
+        return flask.abort(400)
+    data = flask.request.json
+
+    discord_data = refresh_discord_token_and_get_user_data()
+    if not discord_data:
+        return forbidden()
+
+    discord_id = discord_data["id"]
+
+    practice_races = [race for race in RACES if race in data.get("practiceRaces", [])]
+    timezone = data.get("timezone", None)
+    week_time_ranges = {}
+    for day in DAYS_OF_THE_WEEK:
+        key = "timeRanges" + day
+        if key not in data:
+            week_time_ranges[key] = []
+
+        week_time_ranges[key] = [
+            {
+                **({"from": timeRange["from"]} if "from" in timeRange else {}),
+                **({"to": timeRange["to"]} if "to" in timeRange else {}),
+            }
+            for timeRange in data[key]
+        ]
+
+    update = {
+        "practiceRaces": practice_races,
+        **({"timezone": timezone} if timezone else {}),
+        **week_time_ranges,
+    }
+    db = firebase_admin.db.reference()
+    db.child("members").child(discord_id).child("practice").update(update)
+
+    return {}
