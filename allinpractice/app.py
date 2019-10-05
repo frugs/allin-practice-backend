@@ -18,25 +18,10 @@ def retrieve_config_value(key: str) -> str:
     return datastore_client.get(datastore_client.key("Config", key))["value"]
 
 
-DEBUG = os.getenv("DEBUG", "false").casefold() == "true".casefold()
 SECRET_KEY = retrieve_config_value("cookieEncryptionKey")
 DISCORD_CLIENT_KEY = retrieve_config_value("discordClientKey")
 DISCORD_CLIENT_SECRET = retrieve_config_value("discordClientSecret")
-BLIZZARD_CLIENT_KEY = (
-    os.getenv("BLIZZARD_CLIENT_KEY")
-    if DEBUG
-    else retrieve_config_value("blizzardClientKey")
-)
-BLIZZARD_CLIENT_SECRET = (
-    os.getenv("BLIZZARD_CLIENT_SECRET")
-    if DEBUG
-    else retrieve_config_value("blizzardClientSecret")
-)
-BOT_TOKEN = retrieve_config_value("discordBotToken")
 FIREBASE_CONFIG = json.loads(retrieve_config_value("firebaseConfig"))
-SSO_REFRESH_TOKEN_URL = "sso/discord-refresh-token"
-SSO_LOGIN_URL = "/sso/discord-login"
-SSO_LOGOUT_URL = "/sso/discord-signout"
 
 LEAGUE_NAMES = [
     "Bronze",
