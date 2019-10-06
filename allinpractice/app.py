@@ -143,6 +143,17 @@ def member_practice():
         return forbidden()
 
     discord_id = discord_data["id"]
+    discord_username = discord_data["username"]
+    if "avatar" in discord_data:
+        discord_avatar = "https://cdn.discordapp.com/avatars/{}/{}".format(
+            discord_id, discord_data["avatar"]
+        )
+    else:
+        discord_avatar = None
+
+    player_name = data.get("player", None)
+    if not player_name:
+        player_name = discord_username
 
     practice_races = [race for race in RACES if race in data.get("practiceRaces", [])]
     timezone = data.get("timezone", None)
@@ -163,6 +174,8 @@ def member_practice():
     update = {
         "practiceRaces": practice_races,
         **({"timezone": timezone} if timezone else {}),
+        "player": player_name,
+        **({"avatar": discord_avatar} if discord_avatar else {}),
         **week_time_ranges,
     }
     db = firebase_admin.db.reference()
