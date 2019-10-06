@@ -108,8 +108,7 @@ def login():
 
     db = firebase_admin.db.reference()
     member_data = db.child("members").child(discord_id).get()
-    if not member_data:
-        return forbidden()
+    member_data = member_data if member_data else {}
 
     db_name = member_data.get("discord_server_nick", "")
     if not db_name:
