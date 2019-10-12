@@ -1,5 +1,6 @@
 """This is the single sign-on app"""
 import json
+import functools
 
 import flask
 import flask_oauthlib.client
@@ -46,6 +47,7 @@ DAYS_OF_THE_WEEK = [
     "Saturday",
     "Sunday",
 ]
+PAGE_SIZE = 100
 
 app = flask.Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -83,12 +85,33 @@ def refresh_discord_token_and_get_user_data():
     return discord_data
 
 
+def gen_paginated_members():
+    db = firebase_admin.db.reference()
+    start_at = None
+
+    while True:
+        query = db.child("members").order_by_key().limit_to_first(PAGE_SIZE)
+        if start_at:
+            query = query.start_at(start_at)
+        page = query.get()
+        page = page if page else {}
+
+        if start_at in page:
+            page.pop(start_at)
+
+        if not page:
+            return
+
+        yield page
+        start_at = next(reversed(page))
+
+
 def forbidden(description=""):
     flask.abort(403, description=description)
 
 
 @app.route("/member")
-def login():
+def member():
     discord_data = refresh_discord_token_and_get_user_data()
     if not discord_data:
         return forbidden()
@@ -182,3 +205,40 @@ def member_practice():
     db.child("members").child(discord_id).child("practice").update(update)
 
     return {}
+
+
+@app.route("/members")
+def members():
+    discord_data = refresh_discord_token_and_get_user_data()
+    if not discord_data:
+        return forbidden()
+
+    def extract_practice_data(member_key, member_data):
+        league_id = member_data.get("current_league", None)
+        return {
+            "discord_id": member_key,
+            **({"league": LEAGUE_NAMES[league_id]} if league_id is not None else {}),
+            **(
+                {"practice": member_data["practice"]}
+                if member_data.get("practice", {})
+                else {}
+            ),
+        }
+
+    def collect_practice_data(collect_target: list, member_page: dict):
+        collect_target.extend(
+            [
+                extract_practice_data(member_key, member_data)
+                for member_key, member_data in member_page.items()
+            ]
+        )
+        return collect_target
+
+    def filter_practice_data(practice_data: dict):
+        practice = practice_data.get("practice", {})
+        has_time_ranges = any([practice.get("timeRanges" + day, {}) for day in DAYS_OF_THE_WEEK])
+        has_races = bool(practice.get("practiceRaces", []))
+        return has_time_ranges and has_races
+
+    practice_data_list = functools.reduce(collect_practice_data, gen_paginated_members(), [])
+    return flask.jsonify(list(filter(filter_practice_data, practice_data_list)))
